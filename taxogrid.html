@@ -26,6 +26,8 @@
       height: calc(100% - 2 * var(--cell-margin));
       width: calc(100% - 2 * var(--cell-margin));
     }
+
+    body.dark { background: #1a1b1e; }
   </style>
 </head>
 <!--
@@ -35,9 +37,10 @@
     method - 0 = CSS flex (default), 1 = CSS grid
     margin - cell margin in pixels (default 2)
     action - cell click behaviour: select, copy, reorder (default: none)
+    theme  - "dark" or "light" (default: light)
 
   Example:
-    <iframe src="taxogrid.html?q=[A B [C D [E F G H] I] J]&action=select" width="400" height="400"></iframe>
+    <iframe src="taxogrid.html?q=[A B [C D [E F G H] I] J]&action=select&theme=dark" width="400" height="400"></iframe>
 
   PostMessage API (from parent):
     {type: 'set-action', action: 'select'|'copy'|'reorder'}
@@ -55,6 +58,9 @@
      *                  RENDER
      **************************************************************/
     window.onload = function () {
+      var themeParam = GetURLParameter("theme");
+      if (themeParam && themeParam[0] === 'dark') document.body.classList.add('dark');
+
       var params = GetURLParameter("q");
       if (!params) return;
       var rawexpr = decodeURIComponent(params[0]);
