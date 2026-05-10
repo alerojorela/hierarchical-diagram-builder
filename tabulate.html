@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tabulator</title>
+
+  <script src="./jsexternal/jquery-3.3.1.min.js"></script>
+  <script src="./js/common.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="./style/common.css" />
+  <link rel="stylesheet" type="text/css" href="./style/graphicOutput.css" />
+
+  <style>
+    html, body { margin: 0; padding: 8px; }
+    table { border-collapse: collapse; }
+    td {
+      border: 1px solid #777;
+      padding: 0 10px;
+    }
+    .title {
+      background-color: #444;
+      color: #fff;
+      font-weight: bold;
+      text-transform: capitalize;
+    }
+  </style>
+</head>
+<!--
+  Embeddable tabulator renderer.
+  Parameters (URL query string):
+    q     - indented text (use %0A for newlines, %09 for tabs)
+    depth - max depth to render (0 = unlimited)
+
+  Example:
+    <iframe src="tabulate.html?q=Animals%0A%09Mammals%0A%09%09Cat%0A%09%09Dog%0A%09Birds%0A%09%09Eagle&depth=0"
+            width="400" height="300"></iframe>
+-->
+<body>
+  <div id="output"></div>
+
+  <script>
+    window.onload = function () {
+      var params = GetURLParameter("q");
+      if (!params) return;
+      var text = decodeURIComponent(params[0]);
+
+      var depthParam = GetURLParameter("depth");
+      var maxdepth = depthParam ? parseInt(depthParam[0]) || 0 : 0;
+
+      var tabmatch = /\t|\s{4}/g;
+      var cols = [];
+      var table = document.createElement('table');
+      var paragraphs = text.split('\n');
+
+      for (var n = 0; n < paragraphs.length; n++) {
+        if (paragraphs[n].trim() != '') {
+          var row = document.createElement('tr');
+          var depth = (paragraphs[n].match(tabmatch) || []).length;
+          var headingcol = undefined;
+          var cell = paragraphs[n].split(tabmatch);
+          var iteratedepth = (maxdepth == 0) ? cell.length : Math.min(maxdepth, cell.length);
+
+          for (var m = 0; m < iteratedepth; m++) {
+            var content = cell[m].trim();
+            if (content != '') headingcol = m;
+
+            if (cols[m] !== undefined && cols[m].innerHTML == '' && content == '') {
+              cols[m].rowSpan += 1;
+            } else if (m > headingcol + 1) {
+              cols[headingcol].colSpan += 1;
+            } else {
+              cols[m] = document.createElement('td');
+              cols[m].appendChild(document.createTextNode(content));
+              if (headingcol == m) cols[m].classList.add("title");
+              row.append(cols[m]);
+            }
+          }
+          table.append(row);
+        }
+      }
+      document.getElementById('output').appendChild(table);
+    };
+  </script>
+</body>
+</html>
