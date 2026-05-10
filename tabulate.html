@@ -24,6 +24,10 @@
       font-weight: bold;
       text-transform: capitalize;
     }
+
+    body.dark { background: #1a1b1e; color: #e0e0e0; }
+    body.dark td { border-color: #555; }
+    body.dark .title { background-color: #555; }
   </style>
 </head>
 <!--
@@ -31,9 +35,10 @@
   Parameters (URL query string):
     q     - indented text (use %0A for newlines, %09 for tabs)
     depth - max depth to render (0 = unlimited)
+    theme - "dark" or "light" (default: light)
 
   Example:
-    <iframe src="tabulate.html?q=Animals%0A%09Mammals%0A%09%09Cat%0A%09%09Dog%0A%09Birds%0A%09%09Eagle&depth=0"
+    <iframe src="tabulate.html?q=Animals%0A%09Mammals%0A%09%09Cat%0A%09%09Dog%0A%09Birds%0A%09%09Eagle&depth=0&theme=dark"
             width="400" height="300"></iframe>
 -->
 <body>
@@ -41,6 +46,9 @@
 
   <script>
     window.onload = function () {
+      var themeParam = GetURLParameter("theme");
+      if (themeParam && themeParam[0] === 'dark') document.body.classList.add('dark');
+
       var params = GetURLParameter("q");
       if (!params) return;
       var text = decodeURIComponent(params[0]);

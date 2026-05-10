@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sample — Hierarchical Diagram Builder</title>
+
+  <script src="jsexternal/jquery-3.3.1.min.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/parsernode.js"></script>
+  <script src="js/parserterminal.js"></script>
+  <script src="js/taxogrid.js"></script>
+  <script src="js/binarydivision.js"></script>
+  <script src="jsexternal/fitty.min.js"></script>
+
+  <link rel="stylesheet" href="style/taxogrid.css">
+  <link rel="stylesheet" href="tools/binarydivision/binarydivision.css">
+
+  <style>
+    :root {
+      --bg: #1a1b1e;
+      --surface: #25262b;
+      --border: #3a3b40;
+      --text: #e0e0e0;
+      --muted: #888;
+      --accent: #5b8def;
+      --radius: 6px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    h1 { font-size: 1.35em; font-weight: 600; margin: 0 0 8px; }
+    h2 { font-size: 1.05em; font-weight: 600; margin: 0 0 12px; color: var(--accent); }
+    p.intro {
+      font-size: 0.9em;
+      color: var(--muted);
+      margin: 0 0 24px;
+      max-width: 700px;
+    }
+    p.intro a { color: var(--accent); }
+
+    .columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 700px) {
+      .columns { grid-template-columns: 1fr; }
+    }
+
+    .column {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .column p {
+      font-size: 0.85em;
+      color: var(--muted);
+      margin: 0 0 14px;
+    }
+
+    .diagram-block {
+      margin-bottom: 18px;
+    }
+    .diagram-block:last-child { margin-bottom: 0; }
+    .diagram-block h3 {
+      font-size: 0.85em;
+      font-weight: 600;
+      margin: 0 0 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--muted);
+    }
+
+    /* Iframes */
+    iframe {
+      width: 100%;
+      height: 250px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: #fff;
+    }
+
+    /* Direct JS containers */
+    .render-target {
+      --cell-margin: 2px;
+      width: 100%;
+      height: 250px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .render-target .terminal > .content {
+      margin: var(--cell-margin) auto;
+      height: calc(100% - 2 * var(--cell-margin));
+      width: calc(100% - 2 * var(--cell-margin));
+    }
+    .render-target svg {
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .render-target svg text { fill: #e0e0e0; }
+    .render-target svg g line { stroke: #999; }
+    .render-target .taxogram {
+      height: 100%;
+      aspect-ratio: 1;
+    }
+    .render-target table {
+      border-collapse: collapse;
+      font-family: 'Segoe UI', sans-serif;
+      font-size: 0.85em;
+      color: #e0e0e0;
+    }
+    .render-target td {
+      border: 1px solid #555;
+      padding: 2px 10px;
+    }
+    .render-target .title {
+      background-color: #555;
+      color: #fff;
+      font-weight: bold;
+      text-transform: capitalize;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Embedding examples</h1>
+    <p class="intro">
+      Two ways to embed diagrams in your own pages. The left column uses
+      <strong>&lt;iframe&gt;</strong> elements pointing to the standalone HTML renderers.
+      The right column loads the <strong>JavaScript</strong> once and builds the diagrams
+      directly in the DOM, which is lighter when embedding several diagrams.
+      <a href="index.html">&larr; Back to builder</a>
+    </p>
+
+    <div class="columns">
+      <!-- ════════ LEFT: IFRAMES ════════ -->
+      <div class="column">
+        <h2>Iframes</h2>
+        <p>Each diagram is a separate HTML document. Simple to use,
+          but every iframe loads all scripts independently.</p>
+
+        <div class="diagram-block">
+          <h3>Binary Tree</h3>
+          <iframe src="binarydivision.html?q=[S [NP [Det the] [N cat]] [VP [V sat] [PP [P on] [NP [Det the] [N mat]]]]]&depth=0&theme=dark"></iframe>
+        </div>
+
+        <div class="diagram-block">
+          <h3>Taxonomy Grid</h3>
+          <iframe src="taxogrid.html?q=[Design Code [Test Deploy] Review]&method=0&margin=2&action=select&theme=dark"></iframe>
+        </div>
+
+        <div class="diagram-block">
+          <h3>Tabulator</h3>
+          <iframe src="tabulate.html?q=S%0A%09NP%0A%09%09Det%20the%0A%09%09N%20cat%0A%09VP%0A%09%09V%20sat%0A%09%09PP%0A%09%09%09P%20on%0A%09%09%09NP%0A%09%09%09%09Det%20the%0A%09%09%09%09N%20mat&depth=0&theme=dark"></iframe>
+        </div>
+      </div>
+
+      <!-- ════════ RIGHT: DIRECT JS ════════ -->
+      <div class="column">
+        <h2>Direct JavaScript</h2>
+        <p>Scripts loaded once. Each diagram is a DOM element appended
+          to a container. Much lighter for multiple diagrams.</p>
+
+        <div class="diagram-block">
+          <h3>Binary Tree</h3>
+          <div class="render-target" id="js-binary"></div>
+        </div>
+
+        <div class="diagram-block">
+          <h3>Taxonomy Grid</h3>
+          <div class="render-target" id="js-taxogrid"></div>
+        </div>
+
+        <div class="diagram-block">
+          <h3>Tabulator</h3>
+          <div class="render-target" id="js-tabulate"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    /* ── Binary Tree ── */
+    (function () {
+      var obj = ParseBrackettedExpr("[S [NP [Det the] [N cat]] [VP [V sat] [PP [P on] [NP [Det the] [N mat]]]]]");
+      var result = Render(obj);
+      var svg = result.content.firstChild;
+      svg.setAttribute('viewBox', '0 0 ' + result.ContainerSize.width + ' ' + result.ContainerSize.height);
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+      document.getElementById('js-binary').appendChild(svg);
+    })();
+
+    /* ── Taxonomy Grid ── */
+    (function () {
+      var obj = parserterminal.parse("[Design Code [Test Deploy] Review]");
+      var elem = render.TaxoGridCSSFlex(obj, renderoptions.square);
+      document.getElementById('js-taxogrid').appendChild(elem);
+
+      var terminals = elem.querySelectorAll('.terminal > .content');
+      for (var n = 0; n < terminals.length; n++) {
+        var hue = getRandom(140, 160);
+        var sat = getRandom(0, 100);
+        var lum = getRandom(15, 30);
+        terminals[n].style.backgroundColor = 'hsl(' + hue + ',' + sat + '%,' + lum + '%)';
+      }
+      fitty('.render-target .fittedtext', { minSize: 1 });
+    })();
+
+    /* ── Tabulator ── */
+    (function () {
+      var text = "S\n\tNP\n\t\tDet the\n\t\tN cat\n\tVP\n\t\tV sat\n\t\tPP\n\t\t\tP on\n\t\t\tNP\n\t\t\t\tDet the\n\t\t\t\tN mat";
+      var tabmatch = /\t|\s{4}/g;
+      var cols = [];
+      var table = document.createElement('table');
+      var paragraphs = text.split('\n');
+
+      for (var n = 0; n < paragraphs.length; n++) {
+        if (paragraphs[n].trim() === '') continue;
+        var row = document.createElement('tr');
+        var headingcol = undefined;
+        var cell = paragraphs[n].split(tabmatch);
+
+        for (var m = 0; m < cell.length; m++) {
+          var content = cell[m].trim();
+          if (content !== '') headingcol = m;
+
+          if (cols[m] !== undefined && cols[m].innerHTML === '' && content === '') {
+            cols[m].rowSpan += 1;
+          } else if (m > headingcol + 1) {
+            cols[headingcol].colSpan += 1;
+          } else {
+            cols[m] = document.createElement('td');
+            cols[m].appendChild(document.createTextNode(content));
+            if (headingcol === m) cols[m].classList.add('title');
+            row.appendChild(cols[m]);
+          }
+        }
+        table.appendChild(row);
+      }
+      document.getElementById('js-tabulate').appendChild(table);
+    })();
+  </script>
+</body>
+</html>
