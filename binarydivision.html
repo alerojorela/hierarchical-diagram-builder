@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Binary Tree</title>
+  <meta http-equiv="Content-Type" content="svg/xml" />
+
+  <script src="./jsexternal/jquery-3.3.1.min.js"></script>
+  <script src="./js/common.js"></script>
+  <script src="./js/parsernode.js"></script>
+  <script src="./js/taxogrid.js"></script>
+  <script src="./js/binarydivision.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="./style/common.css" />
+  <link rel="stylesheet" type="text/css" href="./style/graphicOutput.css" />
+  <link rel="stylesheet" type="text/css" href="./tools/binarydivision/binarydivision.css" />
+
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+    #output { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+    #output svg { max-width: 100%; max-height: 100%; }
+  </style>
+</head>
+<!--
+  Embeddable binary tree renderer.
+  Parameters (URL query string):
+    q      - bracket expression, e.g. [TP [NP [Det the] [N cat]] [VP [V sat]]]
+    depth  - max depth to render (0 = unlimited)
+
+  Example:
+    <iframe src="binarydivision.html?q=[A [B] [C [D] [E]]]&depth=3" width="600" height="400"></iframe>
+-->
+<body>
+  <div id="output"></div>
+
+  <script>
+    window.onload = function () {
+      var params = GetURLParameter("q");
+      if (!params) return;
+      var rawexpr = decodeURIComponent(params[0]);
+
+      var depthParam = GetURLParameter("depth");
+      var maxdepth = depthParam ? parseInt(depthParam[0]) || 0 : 0;
+
+      var obj = ParseBrackettedExpr(rawexpr);
+      if (!obj) return;
+
+      if (maxdepth > 0) {
+        var pruneAtDepth = function (o, max, cur) {
+          if (cur === undefined) cur = 0;
+          if (cur >= max) { delete o.children; return; }
+          if ('children' in o) {
+            for (var n = 0; n < o.children.length; n++) pruneAtDepth(o.children[n], max, cur + 1);
+          }
+        };
+        pruneAtDepth(obj, maxdepth);
+      }
+
+      var renderedobj = Render(obj);
+      var svg = renderedobj.content.firstChild;
+
+      // Add viewBox so SVG scales responsively
+      var w = renderedobj.ContainerSize.width;
+      var h = renderedobj.ContainerSize.height;
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.removeAttribute('width');
+      svg.removeAttribute('height');
+
+      document.getElementById("output").appendChild(svg);
+    };
+  </script>
+</body>
+</html>

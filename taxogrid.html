@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taxonomy Grid</title>
+  <meta http-equiv="Content-Type" content="svg/xml" />
+
+  <script src="./jsexternal/jquery-3.3.1.min.js"></script>
+  <script src="./jsexternal/fitty.min.js"></script>
+  <script src="./js/common.js"></script>
+  <script src="./js/parserterminal.js"></script>
+  <script src="./js/taxogrid.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="./style/common.css" />
+  <link rel="stylesheet" type="text/css" href="./style/graphicOutput.css" />
+  <link rel="stylesheet" type="text/css" href="./style/taxogrid.css" />
+
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+    :root { --cell-margin: 2px; }
+    #canvas { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; }
+    .taxogram { height: 100%; aspect-ratio: 1; }
+    .terminal > .content {
+      margin: var(--cell-margin) auto;
+      height: calc(100% - 2 * var(--cell-margin));
+      width: calc(100% - 2 * var(--cell-margin));
+    }
+  </style>
+</head>
+<!--
+  Embeddable taxonomy grid renderer.
+  Parameters (URL query string):
+    q      - bracket expression, e.g. [Agua Barco [Cabeza Dedo] Estrella]
+    method - 0 = CSS flex (default), 1 = CSS grid
+    margin - cell margin in pixels (default 2)
+    action - cell click behaviour: select, copy, reorder (default: none)
+
+  Example:
+    <iframe src="taxogrid.html?q=[A B [C D [E F G H] I] J]&action=select" width="400" height="400"></iframe>
+
+  PostMessage API (from parent):
+    {type: 'set-action', action: 'select'|'copy'|'reorder'}
+
+  PostMessage events (to parent):
+    {type: 'taxogrid-sync', expression: '[...]'}  — sent after reorder
+-->
+<body>
+  <div id="canvas"></div>
+
+  <script>
+    var currentAction = '';
+
+    /**************************************************************
+     *                  RENDER
+     **************************************************************/
+    window.onload = function () {
+      var params = GetURLParameter("q");
+      if (!params) return;
+      var rawexpr = decodeURIComponent(params[0]);
+
+      var methodParam = GetURLParameter("method");
+      var method = methodParam ? parseInt(methodParam[0]) || 0 : 0;
+
+      var marginParam = GetURLParameter("margin");
+      if (marginParam) {
+        document.documentElement.style.setProperty('--cell-margin', marginParam[0] + 'px');
+      }
+
+      var actionParam = GetURLParameter("action");
+      currentAction = actionParam ? decodeURIComponent(actionParam[0]) : '';
+
+      var obj = parserterminal.parse(rawexpr);
+      var newElem;
+      if (method == 1) {
+        newElem = render.TaxoGridCSSGrid(obj, renderoptions.square);
+      } else {
+        newElem = render.TaxoGridCSSFlex(obj, renderoptions.square);
+      }
+
+      document.getElementById("canvas").appendChild(newElem);
+
+      // Random colors
+      var terminals = document.querySelectorAll('.terminal > .content');
+      for (var n = 0; n < terminals.length; n++) {
+        var hue = getRandom(140, 160);
+        var sat = getRandom(0, 100);
+        var lum = getRandom(15, 30);
+        terminals[n].style.backgroundColor = 'hsl(' + hue + ',' + sat + '%,' + lum + '%)';
+      }
+
+      fitty('.fittedtext', { minSize: 1 });
+
+      // Attach click handlers
+      $(".terminal>.content").click(function (event) {
+        cellClicked(event);
+      });
+    };
+
+
+    /**************************************************************
+     *                  CELL INTERACTION
+     **************************************************************/
+    var cellClicked = function (event) {
+      var target = event.target;
+      var content = $(target).closest('.content')[0];
+      if (!content || !currentAction) return;
+
+      if (currentAction === 'select') {
+        content.classList.toggle('selected');
+
+      } else if (currentAction === 'copy') {
+        var text = content.textContent.trim();
+        navigator.clipboard.writeText(text);
+        content.style.outline = '2px solid #fff';
+        setTimeout(function () { content.style.outline = ''; }, 300);
+
+      } else if (currentAction === 'reorder') {
+        var fourway = detectClickDirection(event);
+        var cell = $(content).closest('.terminal, .branch')[0];
+        var parentEl = cell.parentNode;
+
+        var siblings = [];
+        for (var i = 0; i < parentEl.children.length; i++) {
+          var ch = parentEl.children[i];
+          if (ch.classList.contains('terminal') || ch.classList.contains('branch')) siblings.push(ch);
+        }
+        if (siblings.length < 2) return;
+
+        // Visual center of clicked cell
+        var cr = cell.getBoundingClientRect();
+        var cx = cr.left + cr.width / 2;
+        var cy = cr.top + cr.height / 2;
+        var rowTol = cr.height * 0.45;
+        var colTol = cr.width * 0.45;
+        var isHoriz = (fourway == 1 || fourway == 3);
+        var isPositive = (fourway == 0 || fourway == 3);
+
+        // Find nearest visual neighbor in direction
+        var swapTarget = null;
+        var bestDist = Infinity;
+        for (var i = 0; i < siblings.length; i++) {
+          if (siblings[i] === cell) continue;
+          var r = siblings[i].getBoundingClientRect();
+          var dx = (r.left + r.width / 2) - cx;
+          var dy = (r.top + r.height / 2) - cy;
+
+          if (isHoriz) {
+            if (Math.abs(dy) > rowTol) continue;
+            if (isPositive ? dx < 5 : dx > -5) continue;
+            if (Math.abs(dx) < bestDist) { bestDist = Math.abs(dx); swapTarget = siblings[i]; }
+          } else {
+            if (Math.abs(dx) > colTol) continue;
+            if (isPositive ? dy < 5 : dy > -5) continue;
+            if (Math.abs(dy) < bestDist) { bestDist = Math.abs(dy); swapTarget = siblings[i]; }
+          }
+        }
+
+        // Wrap: at edge pick farthest in opposite direction
+        if (!swapTarget) {
+          var farthest = -1;
+          for (var i = 0; i < siblings.length; i++) {
+            if (siblings[i] === cell) continue;
+            var r = siblings[i].getBoundingClientRect();
+            var dx = (r.left + r.width / 2) - cx;
+            var dy = (r.top + r.height / 2) - cy;
+            if (isHoriz && Math.abs(dy) <= rowTol) {
+              if (Math.abs(dx) > farthest) { farthest = Math.abs(dx); swapTarget = siblings[i]; }
+            } else if (!isHoriz && Math.abs(dx) <= colTol) {
+              if (Math.abs(dy) > farthest) { farthest = Math.abs(dy); swapTarget = siblings[i]; }
+            }
+          }
+        }
+
+        if (swapTarget) {
+          // Swap inline styles
+          var cs = cell.style.cssText;
+          cell.style.cssText = swapTarget.style.cssText;
+          swapTarget.style.cssText = cs;
+
+          // Swap DOM positions
+          var ph = document.createComment('');
+          parentEl.insertBefore(ph, cell);
+          parentEl.insertBefore(cell, swapTarget);
+          parentEl.insertBefore(swapTarget, ph);
+          parentEl.removeChild(ph);
+
+          // Notify parent
+          syncToParent();
+        }
+      }
+    };
+
+
+    /**************************************************************
+     *                  DIRECTION DETECTION
+     **************************************************************/
+    var detectClickDirection = function (event) {
+      var $target = $(event.target);
+      var cell = $target.parent();
+      var width = cell.width();
+      var height = cell.height();
+      var anglerect = Math.atan(width / height);
+      var posX = cell.offset().left, posY = cell.offset().top;
+      var x = event.pageX - posX - width / 2, y = event.pageY - posY - height / 2;
+      var angle = Math.atan(y / x);
+      if (x < 0) angle += Math.PI;
+      else if (angle < 0) angle += 2 * Math.PI;
+      var d = [anglerect, Math.PI - anglerect, Math.PI + anglerect, 2 * Math.PI - anglerect];
+      if (angle > d[0] && angle < d[1]) return 0; // down
+      if (angle > d[1] && angle < d[2]) return 1; // left
+      if (angle > d[2] && angle < d[3]) return 2; // up
+      return 3; // right
+    };
+
+
+    /**************************************************************
+     *                  DOM → BRACKET EXPRESSION
+     **************************************************************/
+    var domToExpression = function (el) {
+      if (el.classList.contains('terminal')) {
+        var text = el.querySelector('.content').textContent.trim();
+        if (text.indexOf(' ') !== -1) text = '"' + text + '"';
+        return text;
+      }
+      if (el.classList.contains('branch')) {
+        var parts = [];
+        var children = el.children;
+        for (var i = 0; i < children.length; i++) {
+          var child = children[i];
+          if (child.classList.contains('terminal') || child.classList.contains('branch')) {
+            parts.push(domToExpression(child));
+          }
+        }
+        return '[' + parts.join(' ') + ']';
+      }
+      // Taxogram wrapper: pass through
+      var child = el.querySelector('.branch, .terminal');
+      if (child) return domToExpression(child);
+      return '';
+    };
+
+    var syncToParent = function () {
+      var taxogram = document.querySelector('#canvas .taxogram');
+      if (!taxogram) return;
+      var expr = domToExpression(taxogram);
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'taxogrid-sync', expression: expr }, '*');
+      }
+    };
+
+
+    /**************************************************************
+     *                  MESSAGES FROM PARENT
+     **************************************************************/
+    window.addEventListener('message', function (e) {
+      if (e.data && e.data.type === 'set-action') {
+        currentAction = e.data.action;
+      }
+    });
+  </script>
+</body>
+</html>

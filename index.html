@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="Alejandro Rojo">
+  <title>Hierarchical Diagram Builder</title>
+
+  <!-- Scripts -->
+  <script src="jsexternal/jquery-3.3.1.min.js"></script>
+  <script src="js/common.js"></script>
+  <script src="js/parsernode.js"></script>
+  <script src="js/parserterminal.js"></script>
+  <script src="js/taxogrid.js"></script>
+  <script src="js/binarydivision.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="style/common.css" />
+  <link rel="stylesheet" type="text/css" href="style/graphicOutput.css" />
+
+  <style>
+    #common-toolbar {
+      margin: 8px 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    #common-toolbar .separator {
+      border-left: 1px solid #ccc;
+      height: 20px;
+      margin: 0 4px;
+    }
+    #depth-control, #format-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .tool-section { display: none; }
+    .tool-section.active { display: block; }
+
+    #output-frame {
+      width: 100%;
+      height: 60vh;
+      border: 1px solid #ddd;
+      margin-top: 10px;
+      background: #fff;
+    }
+
+    .repo-link {
+      margin-top: 12px;
+      font-size: 85%;
+      text-align: right;
+    }
+    .repo-link a { color: #666; }
+    .repo-link a:hover { color: #333; }
+  </style>
+</head>
+
+<body>
+  <main>
+    <header class="inputarea">
+      <h1>Hierarchical Diagram Builder</h1>
+      <select id="tool-selector" onchange="switchTool(this.value)">
+        <option value="binary">Binary Tree</option>
+        <option value="taxogrid">Taxonomy Grid</option>
+        <option value="tabulate">Tabulator</option>
+      </select>
+    </header>
+
+    <!-- ================ COMMON TOOLBAR ================ -->
+    <div id="common-toolbar">
+      <input type="button" value="Render" onclick="commonRender();" />
+      <input type="button" value="Clear" onclick="commonClear();" />
+      <span class="separator"></span>
+      <div id="depth-control">
+        <label for="maxDepth">Max depth</label>
+        <input id="maxDepth" type="number" min="0" value="0" style="width:50px" />
+      </div>
+      <span class="separator"></span>
+      <div id="format-control">
+        <label for="formatSelector">Format</label>
+        <select id="formatSelector" onchange="formatChanged();">
+          <option value="bracket">Bracket</option>
+          <option value="bracket-indented">Bracket (indented)</option>
+          <option value="tree">Tree</option>
+        </select>
+      </div>
+      <span class="separator"></span>
+      <input type="button" value="Export" onclick="commonExport();" />
+      <input type="button" value="Copy URL" onclick="commonCopyURL();" />
+    </div>
+
+    <!-- ================ BINARY DESCRIPTION ================ -->
+    <section id="binary-section" class="tool-section active">
+      <h2>Binary Tree</h2>
+      <p>Renders a diagram of a recursive <strong>binary structure</strong>. No more than two children per node.</p>
+    </section>
+
+    <!-- ================ TAXOGRID (own textarea + controls) ================ -->
+    <section id="taxogrid-section" class="tool-section">
+      <h2>Taxonomy Grid</h2>
+      <p>Renders a recursive division of a rectangle. Inspired by
+        <a href="https://en.wikipedia.org/wiki/Treemapping">treemaps</a>,
+        <a href="https://en.wikipedia.org/wiki/Chinese_character_description_language">chinese character decomposition</a> or
+        <a href="https://en.wikipedia.org/wiki/Metro_(design_language)">Metro</a> minimalist design.
+      </p>
+      <label>Use brackets <strong>[...]</strong> for hierarchy, <strong>spaces</strong> as separators,
+        quotation marks <strong>"..."</strong> or <strong>&laquo;...&raquo;</strong> to group tokens</label>
+      <textarea id="taxogridInput">[Agua Barco [Cabeza Dedo [Estrella Flor Globo Hoja] Isla] Judia]</textarea>
+      <div>
+        <select id="taxogridClickBehaviour" onchange="taxogridActionChanged();">
+          <optgroup label="Cell Action">
+            <option value='select' selected>Select</option>
+            <option value='copy'>Copy text</option>
+            <option value='reorder'>Reorder</option>
+          </optgroup>
+        </select>
+        <select id="taxogridOutputOption">
+          <optgroup label="Method">
+            <option value='0' selected>CSS flex</option>
+            <option value='1'>CSS grid</option>
+          </optgroup>
+        </select>
+        Margin<input id="taxogridMargin" type="number" name="margin" min="0" max="10" value="2">px
+      </div>
+    </section>
+
+    <!-- ================ TABULATE DESCRIPTION ================ -->
+    <section id="tabulate-section" class="tool-section">
+      <h2>Tabulator</h2>
+      <p>Creates a table from hierarchical data. Same input as Binary Tree, rendered as a study table.</p>
+    </section>
+
+    <!-- ================ SHARED INPUT (binary + tabulate) ================ -->
+    <div id="shared-input-area">
+      <textarea id="sharedInput">[TP [NP [Det Esta] [N herramienta]] [VP [V crea] [NP [N diagramas] [PP [Prep de] [NP [N division] [AdjP [Adj binaria]]]]]]]</textarea>
+    </div>
+
+    <!-- ================ OUTPUT ================ -->
+    <iframe id="output-frame" src="about:blank"></iframe>
+
+  </main>
+
+  <footer>
+    <div class="repo-link">
+      <a href="https://github.com/alerojorela/hierarchical-diagram-builder">Source on GitHub</a>
+    </div>
+  </footer>
+
+  <script>
+    /**************************************************************
+     *                  TOOL STATE
+     **************************************************************/
+    var activeTool = 'binary';
+    var currentFormat = 'bracket';
+    var thisURL = [location.protocol, '//', location.host, location.pathname].join('');
+
+    var tools = {
+      binary:   { hasDepth: true,  hasFormat: true  },
+      taxogrid: { hasDepth: false, hasFormat: false },
+      tabulate: { hasDepth: true,  hasFormat: true  }
+    };
+
+
+    /**************************************************************
+     *                  TOOL SWITCHING
+     **************************************************************/
+    var switchTool = function (tool) {
+      activeTool = tool;
+      var sections = document.getElementsByClassName('tool-section');
+      for (var n = 0; n < sections.length; n++) sections[n].classList.remove('active');
+      document.getElementById(tool + '-section').classList.add('active');
+
+      // Depth control
+      var depthInput = document.getElementById('maxDepth');
+      depthInput.disabled = !tools[tool].hasDepth;
+      if (!tools[tool].hasDepth) depthInput.value = 0;
+
+      // Format control: visible for binary/tabulate, hidden for taxogrid
+      document.getElementById('format-control').style.display = tools[tool].hasFormat ? '' : 'none';
+
+      // Shared textarea: visible for binary/tabulate, hidden for taxogrid
+      document.getElementById('shared-input-area').style.display = tools[tool].hasFormat ? '' : 'none';
+    };
+
+
+    /**************************************************************
+     *                  FORMAT CONVERSION
+     **************************************************************/
+    var objectToTree = function (obj, depth) {
+      if (depth === undefined) depth = 0;
+      var name = ('name' in obj) ? obj.name : '';
+      var lines = ['\t'.repeat(depth) + name];
+      if ('children' in obj) {
+        for (var i = 0; i < obj.children.length; i++) {
+          lines.push(objectToTree(obj.children[i], depth + 1));
+        }
+      }
+      return lines.join('\n');
+    };
+
+    var treeToObject = function (text) {
+      var tabmatch = /\t|\s{4}/g;
+      var lines = text.split('\n');
+      var items = [];
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].trim() !== '') {
+          items.push({
+            depth: (lines[i].match(tabmatch) || []).length,
+            name: lines[i].replace(tabmatch, '').trim()
+          });
+        }
+      }
+      if (items.length === 0) return { name: '' };
+
+      var buildTree = function (start, parentDepth) {
+        var nodes = [];
+        var i = start;
+        while (i < items.length && items[i].depth > parentDepth) {
+          if (items[i].depth === parentDepth + 1) {
+            var node = { name: items[i].name };
+            var sub = buildTree(i + 1, items[i].depth);
+            if (sub.nodes.length > 0) node.children = sub.nodes;
+            nodes.push(node);
+            i = sub.nextIdx;
+          } else {
+            i++;
+          }
+        }
+        return { nodes: nodes, nextIdx: i };
+      };
+
+      var root = { name: items[0].name };
+      var sub = buildTree(1, items[0].depth);
+      if (sub.nodes.length > 0) root.children = sub.nodes;
+      return root;
+    };
+
+    var parseSharedInput = function () {
+      var text = document.getElementById('sharedInput').value.trim();
+      if (!text) return undefined;
+      if (currentFormat === 'tree') return treeToObject(text);
+      return ParseBrackettedExpr(text);
+    };
+
+    var formatChanged = function () {
+      var newFormat = document.getElementById('formatSelector').value;
+      var text = document.getElementById('sharedInput').value.trim();
+      if (!text) { currentFormat = newFormat; return; }
+
+      // Parse with current format
+      var obj;
+      if (currentFormat === 'tree') {
+        obj = treeToObject(text);
+      } else {
+        try { obj = ParseBrackettedExpr(text); } catch (e) { obj = null; }
+      }
+      if (!obj) { currentFormat = newFormat; return; }
+
+      // Convert to new format
+      if (newFormat === 'bracket') {
+        document.getElementById('sharedInput').value = objectToBracketedExpression(obj, false);
+      } else if (newFormat === 'bracket-indented') {
+        document.getElementById('sharedInput').value = objectToBracketedExpression(obj, true);
+      } else {
+        document.getElementById('sharedInput').value = objectToTree(obj);
+      }
+      currentFormat = newFormat;
+    };
+
+
+    /**************************************************************
+     *                  IFRAME RENDERING
+     **************************************************************/
+    var buildIframeSrc = function () {
+      var depth = document.getElementById('maxDepth').value || '0';
+
+      if (activeTool === 'binary') {
+        var obj = parseSharedInput();
+        if (!obj) return '';
+        var bracket = objectToBracketedExpression(obj, false);
+        return 'binarydivision.html?q=' + encodeURIComponent(bracket) + '&depth=' + depth;
+
+      } else if (activeTool === 'taxogrid') {
+        var q = encodeURIComponent(document.getElementById('taxogridInput').value);
+        var method = document.getElementById('taxogridOutputOption').value;
+        var margin = document.getElementById('taxogridMargin').value || '2';
+        var action = document.getElementById('taxogridClickBehaviour').value;
+        return 'taxogrid.html?q=' + q + '&method=' + method + '&margin=' + margin + '&action=' + action;
+
+      } else {
+        var obj = parseSharedInput();
+        if (!obj) return '';
+        var tree = objectToTree(obj);
+        return 'tabulate.html?q=' + encodeURIComponent(tree) + '&depth=' + depth;
+      }
+    };
+
+    var commonRender = function () {
+      var src = buildIframeSrc();
+      if (src) document.getElementById('output-frame').src = src;
+    };
+
+    var commonClear = function () {
+      if (activeTool === 'taxogrid') {
+        document.getElementById('taxogridInput').value = '';
+      } else {
+        document.getElementById('sharedInput').value = '';
+      }
+      document.getElementById('output-frame').src = 'about:blank';
+    };
+
+    var commonCopyURL = function () {
+      var input;
+      if (activeTool === 'taxogrid') {
+        input = document.getElementById('taxogridInput').value;
+      } else {
+        input = document.getElementById('sharedInput').value;
+      }
+      var url = thisURL + '?tool=' + activeTool + '&q=' + encodeURIComponent(input);
+      navigator.clipboard.writeText(url);
+    };
+
+    var commonExport = function () {
+      if (activeTool === 'binary')        exportBinarySVG();
+      else if (activeTool === 'taxogrid') exportTaxogridHTML();
+      else if (activeTool === 'tabulate') exportTabulateCSV();
+    };
+
+
+    /**************************************************************
+     *                  EXPORT
+     **************************************************************/
+    var exportBinarySVG = function () {
+      var obj = parseSharedInput();
+      if (!obj) return;
+      var maxdepth = parseInt(document.getElementById("maxDepth").value) || 0;
+      if (maxdepth > 0) pruneAtDepth(obj, maxdepth);
+      var renderedobj = Render(obj);
+      downloadFile('diagram.svg', renderedobj.content.firstChild.outerHTML, 'image/svg+xml');
+    };
+
+    var exportTaxogridHTML = function () {
+      var q = document.getElementById('taxogridInput').value;
+      var obj = parserterminal.parse(q);
+      var method = document.getElementById('taxogridOutputOption').value;
+      var elem;
+      if (method == 1) {
+        elem = render.TaxoGridCSSGrid(obj, renderoptions.square);
+      } else {
+        elem = render.TaxoGridCSSFlex(obj, renderoptions.square);
+      }
+      var margin = document.getElementById('taxogridMargin').value || '2';
+      var html = '<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n' +
+        '<style>' +
+        ':root{--cell-margin:' + margin + 'px}' +
+        '.taxogram{width:85vh;height:85vh}' +
+        '.flexgrid .branch{display:flex;flex-direction:row;flex-wrap:wrap;width:100%;height:100%}' +
+        '.terminal>.content{background:#444;color:#fff;display:flex;justify-content:center;align-items:center;' +
+        'margin:var(--cell-margin) auto;height:calc(100% - 2*var(--cell-margin));width:calc(100% - 2*var(--cell-margin))}' +
+        '.terminal a,.terminal span{color:#fff;text-decoration:none;padding:3px}' +
+        '</style>\n</head>\n<body>\n' +
+        elem.outerHTML +
+        '\n</body>\n</html>';
+      downloadFile('taxogrid.html', html, 'text/html');
+    };
+
+    var exportTabulateCSV = function () {
+      var obj = parseSharedInput();
+      if (!obj) return;
+      var maxdepth = parseInt(document.getElementById("maxDepth").value) || 0;
+      var tree = objectToTree(obj);
+      var tabmatch = /\t|\s{4}/g;
+      var paragraphs = tree.split('\n');
+
+      var maxCols = 0;
+      for (var n = 0; n < paragraphs.length; n++) {
+        if (paragraphs[n].trim() !== '') {
+          var depth = (paragraphs[n].match(tabmatch) || []).length;
+          var cols = depth + 1;
+          if (maxdepth > 0) cols = Math.min(cols, maxdepth);
+          maxCols = Math.max(maxCols, cols);
+        }
+      }
+
+      var csv = '';
+      for (var n = 0; n < paragraphs.length; n++) {
+        if (paragraphs[n].trim() !== '') {
+          var depth = (paragraphs[n].match(tabmatch) || []).length;
+          if (maxdepth > 0 && depth >= maxdepth) continue;
+          var content = paragraphs[n].replace(tabmatch, '').trim().replace(/"/g, '""');
+          var row = [];
+          for (var c = 0; c < maxCols; c++) {
+            row.push(c === depth ? '"' + content + '"' : '""');
+          }
+          csv += row.join(',') + '\n';
+        }
+      }
+      downloadFile('table.csv', csv, 'text/csv');
+    };
+
+    var downloadFile = function (filename, content, mimeType) {
+      var blob = new Blob([content], { type: mimeType });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+
+    /**************************************************************
+     *                  TAXOGRID: ACTION CHANGE
+     **************************************************************/
+    var taxogridActionChanged = function () {
+      var iframe = document.getElementById('output-frame');
+      if (iframe.contentWindow && activeTool === 'taxogrid') {
+        var action = document.getElementById('taxogridClickBehaviour').value;
+        iframe.contentWindow.postMessage({ type: 'set-action', action: action }, '*');
+      }
+    };
+
+
+    /**************************************************************
+     *                  MESSAGES FROM IFRAME
+     **************************************************************/
+    window.addEventListener('message', function (e) {
+      if (e.data && e.data.type === 'taxogrid-sync') {
+        document.getElementById('taxogridInput').value = e.data.expression;
+      }
+    });
+
+
+    /**************************************************************
+     *                  UTILITIES
+     **************************************************************/
+    var pruneAtDepth = function (obj, maxDepth, currentDepth) {
+      if (currentDepth === undefined) currentDepth = 0;
+      if (currentDepth >= maxDepth) { delete obj.children; return; }
+      if ('children' in obj) {
+        for (var n = 0; n < obj.children.length; n++) {
+          pruneAtDepth(obj.children[n], maxDepth, currentDepth + 1);
+        }
+      }
+    };
+
+
+    /**************************************************************
+     *                  INIT
+     **************************************************************/
+    window.onload = function () {
+      var tool = GetURLParameter("tool");
+      if (tool !== undefined) {
+        activeTool = decodeURI(tool[0]);
+        document.getElementById("tool-selector").value = activeTool;
+      }
+      switchTool(activeTool);
+
+      var q = GetURLParameter("q");
+      if (q !== undefined) {
+        var input = decodeURI(q[0]);
+        if (activeTool === 'taxogrid') {
+          document.getElementById('taxogridInput').value = input;
+        } else {
+          document.getElementById('sharedInput').value = input;
+        }
+      }
+
+      var fmt = GetURLParameter("format");
+      if (fmt !== undefined) {
+        currentFormat = decodeURI(fmt[0]);
+        document.getElementById('formatSelector').value = currentFormat;
+      }
+
+      commonRender();
+    };
+  </script>
+</body>
+
+</html>
